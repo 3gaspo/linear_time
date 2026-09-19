@@ -1,0 +1,67 @@
+defaults:
+  - override hydra/job_logging: stdout
+  - _self_
+
+experiment: default
+study: default  # default/user_generalization/variate_modes
+dataset: SG_PM25/H
+L_term: short
+H_term: short
+experiment_mode: full
+excluded_datasets: [Coastal_T_S/5T, current_velocity/20T, azure2019_D/5T, azure2019_I/5T]
+epsilon: 1.0e-8
+
+data:
+  storage_path: null
+  train_user_fraction: 0.8
+  train_stride: 1
+  evaluation_stride: null  # null follows TIME's distance=H rule
+  constant_policy: keep  # keep/remove_train_windows/remove_eval_windows/remove_all_windows
+  constant_epsilon: 1.0e-8
+
+model:
+  loss: mse
+  normalization: none  # none/center/zscore/relative_mean
+  detrend: none  # none/moving_average
+  kernel_size: 25
+  mode: joint  # joint/independent/shared
+  alpha: 1.0
+  intercept: true
+  repeat_constant: false
+  epsilon: ${epsilon}
+  solver_rcond: 1.0e-12
+
+evaluation:
+  epsilon: ${epsilon}
+
+validation:
+  alphas: [0.0001, 0.001, 0.01, 0.1, 1.0]
+  metric: ${model.loss}
+
+user_generalization:
+  seeds: [0, 1, 2]
+
+variate_modes:
+  modes: [independent, joint, shared]
+
+report:
+  plots: true
+  report_id: null
+
+runtime:
+  batch_size: 512
+
+artifacts:
+  output_root: null  # null uses TIME_OUTPUTS or project/outputs
+  conflict_policy: overwrite_exact
+  force: false
+
+hydra:
+  job_logging:
+    formatters:
+      simple:
+        format: '[%(asctime)s] %(levelname)s %(message)s'
+  run:
+    dir: ${oc.env:TIME_LOGS,logs}/hydra/${now:%Y-%m-%d}/${now:%H-%M-%S}
+  job:
+    chdir: false

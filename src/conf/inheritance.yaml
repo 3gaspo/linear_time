@@ -1,0 +1,35 @@
+parent:
+  project: improved_time
+  revision: 541a2802cd2a35d39156aef4c37de6964d112786
+  source_remote: improved
+  inherited_files:
+    - src/timebench/config/datasets.yaml
+    - src/timebench/pipeline/runs.py
+  source_adapted_behavior:
+    - TIME finite-history filling and finite-pair seasonal scaling
+    - TIME saved-Arrow identities and chronological boundaries
+references:
+  evaluating_tsfms:
+    revision: 7836c4970f7f26dd901b7930f0d45550bf7d32ed
+    role: curated 90-task exclusions, generic reports, plots and cluster tooling
+    integration: committed source adapted locally; no second Git parent
+  timetensors:
+    role: supervised windows, loss definitions, user splitting and W10 summaries
+    integration: selected behavior adapted locally; no second Git parent
+  dlinear:
+    repository: https://github.com/cure-lab/LTSF-Linear
+    revision: 0c113668a3b88c4c4ee586b8c5ec3e539c4de5a6
+    adaptation: NumPy endpoint-padded moving-average decomposition only
+divergences:
+  - No foundation models, checkpoint loaders, or quantile forecast interface.
+  - Hydra point-forecast entry points live under src/scripts.
+  - NMSE/relative-MSE scales use epsilon; MASE matches TIME with zero scale undefined.
+  - MASE eligibility never defines support for the other point metrics.
+  - Short-only TIME horizons are retained as the largest of three child grid horizons.
+  - Moving-average residual and trend heads are jointly fitted with exact ridge.
+  - Parent cross-project artifact reuse is prohibited.
+  - Validation selects alpha on fit members; fitting remains train-only.
+  - Effective L is capped at earliest-test history; validation starts at its first feasible origin.
+  - Seed folders and across-seed sample SD exist only for user generalization.
+  - Default tasks are semantic quantity panels with joint N*L to N*H ridge.
+  - Reports consume exact launch manifests rather than scanning completed tasks.

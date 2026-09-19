@@ -1,0 +1,65 @@
+\documentclass[11pt]{article}
+\usepackage[T1]{fontenc}
+\usepackage{booktabs,geometry}
+\geometry{margin=0.75in}
+\title{Linear TIME experiment guideline}
+\author{}\date{}
+\begin{document}\maketitle\footnotesize
+
+\section{Question}
+Linear TIME measures how exact ridge forecasting changes with temporal scale,
+dataset semantics, user generalization, channel interaction, normalization,
+loss, detrending and constant windows. The implementation uses no foundation
+model or learned iterative optimizer.
+
+\section{Data and tasks}
+TIME's saved-Arrow targets retain item and channel identities. The project YAML
+declares whether these identities represent distinct physical quantities,
+repeated users/sensors, or both. One task is one physical-quantity panel, one
+L-H cell, one model mode and one scientific configuration. TIME chronological
+validation/test lengths remain fixed. Proposed L is capped by history available
+at the earliest test origin. Validation begins at its first origin with that
+effective history. Proposed H is capped in the YAML when a TIME evaluation
+interval is shorter.
+
+\begin{center}\begin{tabular}{llll}\toprule
+Front & subset & models & seeds\\\midrule
+01 default & all retained semantic panels & joint & none\\
+02 user generalization & repeated-member panels & shared & 0,1,2\\
+03 variate modes & panels with $N\ge2$ & independent, joint, shared & none\\
+\bottomrule\end{tabular}\end{center}
+Every front runs all nine dataset-specific L-H cells. The default and variate
+experiments use every member. User generalization partitions members 80/20 and
+reports seen/unseen validation/test populations.
+
+\section{Execution}
+Each root Slurm front resolves the checkout through \texttt{SLURM\_SUBMIT\_DIR},
+loads project-owned runtime paths, records one compute-node resource snapshot,
+and calls \texttt{src/slurm/study.sh}. That shell runs fit/evaluate and report
+stages sequentially. Task manifests are allocated before fitting and own exact
+configuration/recovery identity. Paths contain readable factors and optional
+seed folders; they contain no hashes.
+
+For each task, pseudocode is:
+\begin{verbatim}
+load Arrow targets and semantic YAML
+split distinct quantities; preserve repeated entities in a panel
+effective L = min(proposed L, history at earliest test origin)
+stream training panel windows and prepare exact ridge system
+for alpha in validation grid: solve reused system; score validation
+solve selected alpha on training statistics
+evaluate ridge, persistence, Seasonal Naive
+write state, window metrics, summaries, timings, manifest
+\end{verbatim}
+
+Reports consume exactly the completed task manifests named by their launch.
+All metrics keep finite support and
+matched Seasonal denominators explicit. Only seeded user generalization reports
+sample SD across partitions. Every PNG is paired with a PDF and all artifacts
+are enumerated by the report manifest.
+
+\section{Current evidence}
+No real TIME execution has been submitted or analyzed. The maintained synthetic
+checkpoint covers semantic configuration, all three exact model modes, the L
+cap, seasonal evaluation, seed scope, task lifecycle, plots and Slurm headers.
+\end{document}

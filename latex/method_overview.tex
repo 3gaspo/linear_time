@@ -1,0 +1,66 @@
+\documentclass[11pt]{article}
+\usepackage[T1]{fontenc}
+\usepackage{amsmath,amssymb,booktabs}
+\usepackage[margin=1in]{geometry}
+\title{Linear TIME: exact ridge forecasting}
+\author{}\date{}
+\begin{document}\maketitle\small
+
+A semantic panel contains one physical quantity observed for $N$ aligned
+members. For origin $i$, histories are $X_i\in\mathbb R^{N\times L}$ and
+targets are $Y_i\in\mathbb R^{N\times H}$. Distinct physical quantities form
+separate panels; repeated users or sensors remain rows of the same panel.
+
+Per member, an optional affine transform uses history mean $\mu_{in}$ and
+population standard deviation $\sigma_{in}$. Its offset/scale pair is one of
+$(0,1)$, $(\mu,1)$, $(\mu,\sigma+\epsilon)$, or
+$(0,|\mu|+\epsilon)$. Optional endpoint-padded moving-average decomposition
+concatenates residual and trend histories.
+
+The three model modes are
+\begin{center}\begin{tabular}{lll}\toprule
+Mode & design & output\\\midrule
+independent & one $L$-feature design per member & one $H$-output head per member\\
+joint & flattened $N L$ design & one $N H$-output head\\
+shared & pooled member windows with $L$ features & one shared $H$-output head\\
+\bottomrule\end{tabular}\end{center}
+The default is joint. User generalization uses shared mode so coefficients
+fitted on seen members apply to unseen members.
+
+For design row $z_i$, normalized target $t_i$, loss scale $d_i$, output scale
+$s_i$, and $q_i=(s_i/d_i)^2$, each output solves
+\[
+ \min_b\;\frac1M\sum_{i=1}^M q_i(z_i b-t_i)^2+\alpha\|Pb\|_2^2,
+\]
+where $P$ excludes the intercept. The declared loss scale is $1$ for MSE,
+$\sigma+\epsilon$ for NMSE, and $|\mu|+\epsilon$ for relative MSE. Sufficient
+statistics give the exact primal system
+\[
+ (Z^\top QZ/M+\alpha P^\top P)b=Z^\top Qt/M.
+\]
+For the default raw-MSE joint model, large designs use the equivalent centered
+dual system
+\[
+ (Z_cZ_c^\top/M+\alpha I)a=Y_c,\qquad
+ \widehat Y=\bar Y+(Z-\bar Z)Z_c^\top a/M.
+\]
+This avoids materializing an infeasible $(NL)\times(NH)$ coefficient matrix
+without approximation. Five candidate alphas are scored on validation; the
+selected system remains fitted on training labels only.
+
+MAE and MSE average finite horizon labels per window/member. NMSE and relative
+MSE divide MSE by their squared loss scales. Here \texttt{rmse} denotes
+relative MSE. MASE divides MAE by the mean finite seasonal difference over all
+original history preceding the origin; missing or zero scale is undefined.
+Seasonal Naive repeats the last complete-prefix season independently of $L$.
+Scaled MASE uses its matched population/task mean. W10 is the mean of the worst
+$\lceil0.1U\rceil$ finite member means among $U$ members.
+
+Only user generalization is random. Its seeds $0,1,2$ define the complete
+80/20 member partition. For seed scores $m_s$, reports give their arithmetic
+mean and sample standard deviation ($ddof=1$), displayed as mean $\pm$ SD.
+
+\paragraph{Implementation.} Separate data, ridge, pipeline, results, and
+visualization packages own these stages. Each report consumes the completed
+tasks named by one exact launch manifest.
+\end{document}

@@ -1,0 +1,458 @@
+# Calendar-scale Linear TIME grid: nine Cartesian L-H settings per dataset.
+# Short/medium/long contexts target local cycle, intermediate history, and a
+# long calendar span. Horizons target day/week/month at hourly resolution and
+# analogous spans at other frequencies. TIME validation/test intervals remain
+# fixed, so a desired horizon is capped at the shorter interval and the other
+# two values are shortened when necessary. Native TIME tasks are composed
+# separately and are not required to be cells of this analysis grid.
+datasets:
+  Water_Quality_Darwin/15T:
+    context_lengths:
+      short: 96
+      medium: 672
+      long: 2880
+    horizon_lengths:
+      short: 96
+      medium: 672
+      long: 1440
+  current_velocity/5T:
+    context_lengths:
+      short: 288
+      medium: 2016
+      long: 8640
+    horizon_lengths:
+      short: 288
+      medium: 2016
+      long: 4320
+  current_velocity/10T:
+    context_lengths:
+      short: 144
+      medium: 1008
+      long: 4320
+    horizon_lengths:
+      short: 144
+      medium: 1008
+      long: 2160
+  current_velocity/15T:
+    context_lengths:
+      short: 96
+      medium: 672
+      long: 2880
+    horizon_lengths:
+      short: 96
+      medium: 672
+      long: 1440
+  current_velocity/20T:
+    context_lengths:
+      short: 72
+      medium: 504
+      long: 2160
+    horizon_lengths:
+      short: 72
+      medium: 504
+      long: 1080
+  current_velocity/H:
+    context_lengths:
+      short: 24
+      medium: 168
+      long: 720
+    horizon_lengths:
+      short: 24
+      medium: 168
+      long: 672
+  CPHL/15T:
+    context_lengths:
+      short: 96
+      medium: 672
+      long: 2880
+    horizon_lengths:
+      short: 96
+      medium: 672
+      long: 1440
+  CPHL/30T:
+    context_lengths:
+      short: 48
+      medium: 336
+      long: 1440
+    horizon_lengths:
+      short: 48
+      medium: 336
+      long: 1440
+  CPHL/H:
+    context_lengths:
+      short: 24
+      medium: 168
+      long: 720
+    horizon_lengths:
+      short: 24
+      medium: 168
+      long: 672
+  Coastal_T_S/5T:
+    context_lengths:
+      short: 288
+      medium: 2016
+      long: 8640
+    horizon_lengths:
+      short: 288
+      medium: 2016
+      long: 4320
+  Coastal_T_S/15T:
+    context_lengths:
+      short: 96
+      medium: 672
+      long: 2880
+    horizon_lengths:
+      short: 96
+      medium: 672
+      long: 1440
+  Coastal_T_S/20T:
+    context_lengths:
+      short: 72
+      medium: 504
+      long: 2160
+    horizon_lengths:
+      short: 72
+      medium: 504
+      long: 1080
+  Coastal_T_S/H:
+    context_lengths:
+      short: 24
+      medium: 168
+      long: 720
+    horizon_lengths:
+      short: 24
+      medium: 168
+      long: 672
+  SG_Weather/D:
+    context_lengths:
+      short: 7
+      medium: 30
+      long: 90
+    horizon_lengths:
+      short: 7
+      medium: 30
+      long: 90
+  SG_PM25/H:
+    context_lengths:
+      short: 24
+      medium: 168
+      long: 720
+    horizon_lengths:
+      short: 24
+      medium: 168
+      long: 720
+  NE_China_Wind/H:
+    context_lengths:
+      short: 24
+      medium: 168
+      long: 720
+    horizon_lengths:
+      short: 24
+      medium: 168
+      long: 720
+  Australia_Solar/H:
+    context_lengths:
+      short: 24
+      medium: 168
+      long: 720
+    horizon_lengths:
+      short: 24
+      medium: 168
+      long: 720
+  epf_electricity_price/H:
+    context_lengths:
+      short: 24
+      medium: 168
+      long: 720
+    horizon_lengths:
+      short: 24
+      medium: 168
+      long: 720
+  OpenElectricity_NEM/5T:
+    context_lengths:
+      short: 288
+      medium: 2016
+      long: 8640
+    horizon_lengths:
+      short: 288
+      medium: 2016
+      long: 4032
+  EWELD_Load/15T:
+    context_lengths:
+      short: 96
+      medium: 672
+      long: 2880
+    horizon_lengths:
+      short: 96
+      medium: 672
+      long: 1344
+  SG_Carpark/15T:
+    context_lengths:
+      short: 96
+      medium: 672
+      long: 2880
+    horizon_lengths:
+      short: 96
+      medium: 336
+      long: 672
+  Finland_Traffic/15T:
+    context_lengths:
+      short: 96
+      medium: 672
+      long: 2880
+    horizon_lengths:
+      short: 96
+      medium: 672
+      long: 2880
+  Port_Activity/D:
+    context_lengths:
+      short: 7
+      medium: 30
+      long: 90
+    horizon_lengths:
+      short: 7
+      medium: 30
+      long: 90
+  Port_Activity/W:
+    context_lengths:
+      short: 13
+      medium: 26
+      long: 52
+    horizon_lengths:
+      short: 1
+      medium: 4
+      long: 13
+  ECDC_COVID/D:
+    context_lengths:
+      short: 7
+      medium: 30
+      long: 90
+    horizon_lengths:
+      short: 7
+      medium: 15
+      long: 30
+  ECDC_COVID/W:
+    context_lengths:
+      short: 13
+      medium: 26
+      long: 52
+    horizon_lengths:
+      short: 1
+      medium: 4
+      long: 13
+  Global_Influenza/W:
+    context_lengths:
+      short: 13
+      medium: 26
+      long: 52
+    horizon_lengths:
+      short: 1
+      medium: 4
+      long: 13
+  Crypto/D:
+    context_lengths:
+      short: 7
+      medium: 30
+      long: 90
+    horizon_lengths:
+      short: 7
+      medium: 30
+      long: 90
+  US_Term_Structure/B:
+    context_lengths:
+      short: 20
+      medium: 60
+      long: 120
+    horizon_lengths:
+      short: 5
+      medium: 20
+      long: 60
+  Oil_Price/B:
+    context_lengths:
+      short: 20
+      medium: 60
+      long: 120
+    horizon_lengths:
+      short: 5
+      medium: 20
+      long: 60
+  Job_Claims/W:
+    context_lengths:
+      short: 13
+      medium: 26
+      long: 52
+    horizon_lengths:
+      short: 1
+      medium: 4
+      long: 13
+  Uncertainty_1M/M:
+    context_lengths:
+      short: 12
+      medium: 36
+      long: 60
+    horizon_lengths:
+      short: 1
+      medium: 6
+      long: 18
+  Housing_Inventory/M:
+    context_lengths:
+      short: 12
+      medium: 36
+      long: 60
+    horizon_lengths:
+      short: 1
+      medium: 6
+      long: 12
+  JOLTS/M:
+    context_lengths:
+      short: 12
+      medium: 36
+      long: 60
+    horizon_lengths:
+      short: 1
+      medium: 6
+      long: 12
+  US_Labor/M:
+    context_lengths:
+      short: 12
+      medium: 36
+      long: 60
+    horizon_lengths:
+      short: 1
+      medium: 6
+      long: 12
+  Vehicle_Supply/M:
+    context_lengths:
+      short: 12
+      medium: 36
+      long: 60
+    horizon_lengths:
+      short: 1
+      medium: 6
+      long: 12
+  Auto_Production_SF/M:
+    context_lengths:
+      short: 12
+      medium: 36
+      long: 60
+    horizon_lengths:
+      short: 1
+      medium: 6
+      long: 12
+  Commodity_Production/M:
+    context_lengths:
+      short: 12
+      medium: 36
+      long: 60
+    horizon_lengths:
+      short: 1
+      medium: 6
+      long: 12
+  Commodity_Import/M:
+    context_lengths:
+      short: 12
+      medium: 36
+      long: 60
+    horizon_lengths:
+      short: 1
+      medium: 6
+      long: 12
+  WUI_Global/Q:
+    context_lengths:
+      short: 4
+      medium: 12
+      long: 20
+    horizon_lengths:
+      short: 1
+      medium: 4
+      long: 12
+  Global_Price/Q:
+    context_lengths:
+      short: 4
+      medium: 12
+      long: 20
+    horizon_lengths:
+      short: 1
+      medium: 4
+      long: 8
+  Vehicle_Sales/M:
+    context_lengths:
+      short: 12
+      medium: 36
+      long: 60
+    horizon_lengths:
+      short: 1
+      medium: 6
+      long: 12
+  Online_Retail_2_UCI/D:
+    context_lengths:
+      short: 7
+      medium: 30
+      long: 90
+    horizon_lengths:
+      short: 7
+      medium: 30
+      long: 90
+  Supply_Chain_Customer/D:
+    context_lengths:
+      short: 7
+      medium: 30
+      long: 90
+    horizon_lengths:
+      short: 7
+      medium: 30
+      long: 90
+  Supply_Chain_Location/D:
+    context_lengths:
+      short: 7
+      medium: 30
+      long: 90
+    horizon_lengths:
+      short: 7
+      medium: 30
+      long: 90
+  azure2019_D/5T:
+    context_lengths:
+      short: 288
+      medium: 2016
+      long: 8640
+    horizon_lengths:
+      short: 288
+      medium: 432
+      long: 864
+  azure2019_I/5T:
+    context_lengths:
+      short: 288
+      medium: 2016
+      long: 8640
+    horizon_lengths:
+      short: 288
+      medium: 432
+      long: 864
+  azure2019_U/5T:
+    context_lengths:
+      short: 288
+      medium: 2016
+      long: 8640
+    horizon_lengths:
+      short: 24
+      medium: 48
+      long: 96
+  Smart_Manufacturing/H:
+    context_lengths:
+      short: 24
+      medium: 168
+      long: 720
+    horizon_lengths:
+      short: 24
+      medium: 168
+      long: 336
+  MetroPT-3/5T:
+    context_lengths:
+      short: 288
+      medium: 2016
+      long: 8640
+    horizon_lengths:
+      short: 288
+      medium: 864
+      long: 1728
