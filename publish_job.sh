@@ -3,13 +3,14 @@
 set -euo pipefail
 
 usage() {
-    echo "usage: bash publish_job.sh [JOB_ID] [--size lightweight|detailed|full] [--message TEXT] [--project-root PATH]" >&2
+    echo "usage: bash publish_job.sh [JOB_ID] [--size lightweight|detailed|full] [--clean] [--message TEXT] [--project-root PATH]" >&2
 }
 
 project_root="$(pwd)"
 job_id=""
 message=""
 publish_size="lightweight"
+clean_mode=false
 if [ "$#" -gt 0 ] && [[ "$1" != --* ]]; then
     job_id="$1"
     shift
@@ -18,6 +19,7 @@ while [ "$#" -gt 0 ]; do
     case "$1" in
         --job-id) job_id="$2"; shift 2 ;;
         --size) publish_size="$2"; shift 2 ;;
+        --clean) clean_mode=true; shift ;;
         --message) message="$2"; shift 2 ;;
         --project-root) project_root="$2"; shift 2 ;;
         -h|--help) usage; exit 0 ;;
@@ -32,6 +34,11 @@ esac
 if [ -n "$job_id" ] && ! [[ "$job_id" =~ ^[0-9]+$ ]]; then
     usage
     echo "JOB_ID must be numeric" >&2
+    exit 2
+fi
+if [ "$clean_mode" = true ] && { [ -n "$job_id" ] || [ "$publish_size" != lightweight ]; }; then
+    usage
+    echo "--clean cannot be combined with JOB_ID or --size" >&2
     exit 2
 fi
 
@@ -53,6 +60,48 @@ proxy_script="${PROXY_SCRIPT_PATH:-$HOME/codes/proxy.sh}"
 }
 . "$proxy_script"
 git pull --ff-only origin main
+
+if [ "$clean_mode" = true ]; then
+    deleted_paths=()
+    while IFS= read -r -d '' deleted_path; do
+        deleted_paths+=("$deleted_path")
+    done < <(git diff --name-only --diff-filter=D -z HEAD --)
+    stage_paths=()
+    clean_paths=()
+    for deleted_path in "${deleted_paths[@]}"; do
+        clean_paths+=(":(literal)$deleted_path")
+        if git ls-files --error-unmatch -- ":(literal)$deleted_path" >/dev/null 2>&1; then
+            stage_paths+=(":(literal)$deleted_path")
+        fi
+    done
+    for environment_file in pyproject.toml uv.lock; do
+        if [ -f "$environment_file" ]; then
+            clean_paths+=(":(literal)$environment_file")
+            stage_paths+=(":(literal)$environment_file")
+        fi
+    done
+
+    if [ "${#clean_paths[@]}" -gt 0 ]; then
+        clean_pathspec="$(mktemp)"
+        stage_pathspec="$(mktemp)"
+        trap 'rm -f -- "$clean_pathspec" "$stage_pathspec"' EXIT
+        printf '%s\0' "${clean_paths[@]}" > "$clean_pathspec"
+        if [ "${#stage_paths[@]}" -gt 0 ]; then
+            printf '%s\0' "${stage_paths[@]}" > "$stage_pathspec"
+            git add -v -f -A --pathspec-from-file="$stage_pathspec" --pathspec-file-nul
+        fi
+        if [ "${#deleted_paths[@]}" -gt 0 ] || ! git diff --cached --quiet -- pyproject.toml uv.lock; then
+            [ -n "$message" ] || message="maintenance: publish deletions and environment files"
+            git commit --only -m "$message" --pathspec-from-file="$clean_pathspec" --pathspec-file-nul
+        else
+            echo "No clean-mode changes; pushing existing local commits."
+        fi
+    else
+        echo "No clean-mode changes; pushing existing local commits."
+    fi
+    git push origin main
+    exit 0
+fi
 
 paths=()
 if [ -n "$job_id" ]; then
@@ -134,6 +183,7 @@ done
 
 sample_paths=()
 oversize_exclusions=()
+oversize_paths=()
 for selected_path in "${paths[@]}"; do
     while IFS= read -r -d '' file; do
         relative="${file#"$project_root"/}"
@@ -170,11 +220,24 @@ for selected_path in "${paths[@]}"; do
             fi
         } > "$sample_file"
         sample_paths+=("$sample_relative")
+        oversize_paths+=("$relative")
         oversize_exclusions+=(":(exclude,literal)$relative")
         echo "Replacing oversized artifact ($file_bytes bytes) with $sample_relative"
     done < <(find "$project_root/$selected_path" -type f -print0)
 done
-publish_paths=("${paths[@]}" "${sample_paths[@]}")
+declare -A oversize_lookup=()
+for oversize_path in "${oversize_paths[@]}"; do
+    oversize_lookup["$oversize_path"]=1
+done
+publish_paths=()
+for selected_path in "${paths[@]}"; do
+    [ -z "${oversize_lookup[$selected_path]+x}" ] || continue
+    publish_paths+=("$selected_path")
+done
+publish_paths+=("${sample_paths[@]}")
+publish_pathspec="$(mktemp)"
+trap 'rm -f -- "$publish_pathspec"' EXIT
+printf '%s\0' "${publish_paths[@]}" "${exclusions[@]}" "${oversize_exclusions[@]}" > "$publish_pathspec"
 
 if [ -n "$job_id" ]; then
     echo "Publishing job $job_id logs and $publish_size TIME artifacts:"
@@ -182,9 +245,9 @@ else
     echo "Publishing DGX and synchronized Selena logs plus $publish_size TIME artifacts:"
 fi
 printf '  %s\n' "${paths[@]}"
-git add -v -f -- "${publish_paths[@]}" "${exclusions[@]}" "${oversize_exclusions[@]}"
-if ! git diff --cached --quiet -- "${publish_paths[@]}" "${exclusions[@]}" "${oversize_exclusions[@]}"; then
-    git commit --only -m "$message" -- "${publish_paths[@]}" "${exclusions[@]}" "${oversize_exclusions[@]}"
+git add -v -f --pathspec-from-file="$publish_pathspec" --pathspec-file-nul
+if ! git diff --cached --quiet; then
+    git commit --only -m "$message" --pathspec-from-file="$publish_pathspec" --pathspec-file-nul
 else
     echo "No new artifact changes; pushing existing local commits."
 fi
