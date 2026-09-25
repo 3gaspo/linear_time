@@ -1,6 +1,8 @@
 """Exact weighted ridge for joint, independent, and shared panel modes."""
 
 from dataclasses import asdict, dataclass, replace
+import json
+from pathlib import Path
 from typing import Iterable
 
 import numpy as np
@@ -144,6 +146,79 @@ class FittedRidge:
             "representation": "exact_dual" if self.joint_dual is not None else "exact_primal",
             "lag_order": "member-major, oldest-to-newest",
             "output_order": "member-major, horizon-within-member"}
+
+
+def save_problem(problem: RidgeProblem, destination: str | Path) -> list[str]:
+    """Persist reusable training statistics without solving a selected alpha."""
+    destination = Path(destination)
+    arrays = {}
+    states = {}
+    for index, (name, state) in enumerate(problem.statistics.items()):
+        arrays[f"gram_{index}"] = state.gram
+        arrays[f"rhs_{index}"] = state.rhs
+        states[str(index)] = {"name": name, "windows": state.windows,
+            "fitted_cells": state.fitted_cells, "bypassed_cells": state.bypassed_cells}
+    if problem.joint_features is not None:
+        arrays["joint_features"] = problem.joint_features
+        arrays["joint_targets"] = problem.joint_targets
+    np.savez_compressed(destination / "training_statistics.npz", **arrays)
+    (destination / "training_statistics.json").write_text(json.dumps({
+        "schema_version": 1, "config": asdict(problem.config),
+        "L": problem.L, "H": problem.H, "member_ids": list(problem.member_ids),
+        "states": states, "joint_panel_id": problem.joint_panel_id,
+        "representation": "joint_windows" if problem.joint_features is not None else "sufficient_statistics",
+    }, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    return ["training_statistics.npz", "training_statistics.json"]
+
+
+def load_problem(source: str | Path) -> RidgeProblem:
+    source = Path(source)
+    metadata = json.loads((source / "training_statistics.json").read_text(encoding="utf-8"))
+    arrays = np.load(source / "training_statistics.npz", allow_pickle=False)
+    statistics = {}
+    for index, state in metadata["states"].items():
+        statistics[state["name"]] = _Statistics(
+            arrays[f"gram_{index}"], arrays[f"rhs_{index}"],
+            int(state["windows"]), int(state["fitted_cells"]), int(state["bypassed_cells"]),
+        )
+    joint_features = arrays["joint_features"] if "joint_features" in arrays.files else None
+    joint_targets = arrays["joint_targets"] if "joint_targets" in arrays.files else None
+    return RidgeProblem(
+        RidgeConfig(**metadata["config"]), int(metadata["L"]), int(metadata["H"]),
+        tuple(metadata["member_ids"]), statistics, joint_features, joint_targets,
+        metadata.get("joint_panel_id"),
+    )
+
+
+def save_fitted(model: FittedRidge, destination: str | Path) -> list[str]:
+    destination = Path(destination)
+    names = list(model.coefficients)
+    arrays = {f"head_{index}": model.coefficients[name] for index, name in enumerate(names)}
+    for name in ("joint_train_features", "joint_dual", "joint_feature_mean", "joint_target_mean"):
+        value = getattr(model, name)
+        if value is not None:
+            arrays[name] = value
+    np.savez_compressed(destination / "coefficients.npz", **arrays)
+    (destination / "coefficient_heads.json").write_text(json.dumps({
+        "schema_version": 1, "metadata": model.metadata(),
+        "heads": {f"head_{index}": name for index, name in enumerate(names)},
+    }, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    return ["coefficients.npz", "coefficient_heads.json"]
+
+
+def load_fitted(source: str | Path) -> FittedRidge:
+    source = Path(source)
+    metadata = json.loads((source / "coefficient_heads.json").read_text(encoding="utf-8"))
+    model_metadata = metadata["metadata"]
+    arrays = np.load(source / "coefficients.npz", allow_pickle=False)
+    coefficients = {name: arrays[key] for key, name in metadata["heads"].items()}
+    optional = {name: arrays[name] if name in arrays.files else None for name in
+        ("joint_train_features", "joint_dual", "joint_feature_mean", "joint_target_mean")}
+    return FittedRidge(
+        RidgeConfig(**model_metadata["config"]), int(model_metadata["L"]),
+        int(model_metadata["H"]), tuple(model_metadata["members"]), coefficients,
+        model_metadata["heads"], **optional,
+    )
 
 
 def _new_statistics(outputs: int, width: int) -> _Statistics:

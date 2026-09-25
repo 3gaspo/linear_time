@@ -58,7 +58,12 @@ All studies select alpha on validation from
 `[0.0001, 0.001, 0.01, 0.1, 1]`, without refitting on validation labels. Use
 `EXPERIMENT_MODE=test` for the delayed one-cell smoke profile. Hydra overrides
 select loss, normalization, moving-average detrending, constant rules and
-runtime values through `src/conf/config.yaml`.
+runtime values through `src/conf/config.yaml`. Validation dates step backward
+from the first test date at stride `H`, never exceed the number of test dates,
+and require finite L-point inputs and H-point outputs. Each task records
+requested, available and usable counts. If none are usable, alpha falls back to
+the configured default; fitting still requires at least one valid training
+input/output window.
 
 ## Outputs and cluster operations
 
@@ -71,7 +76,11 @@ with that effective history. Each report consumes exactly the task manifests
 listed by its launch, so separate launches and configurations cannot mix.
 
 Each task stores coefficients or exact dual state, alpha scores, panel/member
-metadata, window metrics, summaries and independent timings. Reports live at
+metadata, window metrics, summaries and independent timings. Reusable caches
+under `outputs/<study>/cache/` separately own training statistics, validation
+alpha selection, fitted coefficients, and each population/split evaluation.
+Changing the candidate alpha list reuses unchanged training statistics; only a
+changed selected alpha invalidates coefficients and their evaluations. Reports live at
 `outputs/reports/<study>/<report-id>/`. They include MASE, MAE, MSE, NMSE,
 relative MSE (`rmse`), their W10 versions, matched Seasonal-scaled MASE, L-H
 heatmaps and paired PNG/PDF exports. Only the user-generalization report reduces
@@ -83,6 +92,9 @@ artifacts and private records. `sync_results_to_dgx.sh` and `publish_job.sh`
 share `artifact_selection.py`; lightweight mode keeps reports and compact
 metadata while excluding raw arrays. Runtime artifacts and logs remain inside
 this project's Selena scratch root.
+Every allocation records visible accelerators, GPU/host memory, and explicit
+cgroup availability before its stages. Fit/evaluation and report stages emit
+the shared selected-device event with `cpu`.
 
 ## Documentation maintenance
 

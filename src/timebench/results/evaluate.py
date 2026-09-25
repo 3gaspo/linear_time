@@ -11,7 +11,7 @@ from .metrics import METRICS, compute_window_metrics, summarize_metrics
 
 
 def validation_score(batches: Iterable[WindowBatch], model: FittedRidge,
-    metric: str, epsilon: float) -> float:
+    metric: str, epsilon: float) -> float | None:
     total, count = 0.0, 0
     for batch in batches:
         values = compute_window_metrics(model.predict(batch), batch.y, batch.x,
@@ -19,9 +19,7 @@ def validation_score(batches: Iterable[WindowBatch], model: FittedRidge,
         finite = values[np.isfinite(values)]
         total += float(finite.sum())
         count += len(finite)
-    if not count:
-        raise ValueError("Alpha selection has no finite validation losses")
-    return total / count
+    return total / count if count else None
 
 
 def evaluate_batches(batches: Iterable[WindowBatch], model: FittedRidge, *, epsilon: float):

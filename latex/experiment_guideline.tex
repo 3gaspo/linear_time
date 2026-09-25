@@ -18,8 +18,11 @@ declares whether these identities represent distinct physical quantities,
 repeated users/sensors, or both. One task is one physical-quantity panel, one
 L-H cell, one model mode and one scientific configuration. TIME chronological
 validation/test lengths remain fixed. Proposed L is capped by history available
-at the earliest test origin. Validation begins at its first origin with that
-effective history. Proposed H is capped in the YAML when a TIME evaluation
+at the earliest test origin. Validation walks backward from the first test
+origin at stride H, uses at most the test-date count, and keeps only finite
+L-input/H-output windows. Zero usable validation windows selects the configured
+default alpha, while training still requires at least one valid window.
+Proposed H is capped in the YAML when a TIME evaluation
 interval is shorter.
 
 \begin{center}\begin{tabular}{llll}\toprule
@@ -51,6 +54,11 @@ solve selected alpha on training statistics
 evaluate ridge, persistence, Seasonal Naive
 write state, window metrics, summaries, timings, manifest
 \end{verbatim}
+
+Training statistics, validation alpha choice, selected coefficients, and each
+population/split evaluation are separate exact caches. Therefore a changed
+alpha grid reuses training statistics, and unchanged selected coefficients
+reuse their evaluation products.
 
 Reports consume exactly the completed task manifests named by their launch.
 All metrics keep finite support and

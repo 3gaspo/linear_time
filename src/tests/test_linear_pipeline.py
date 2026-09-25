@@ -19,7 +19,8 @@ from timebench.data.time import TimePanel, load_dataset_semantics
 from timebench.data.windows import WindowBatch, iter_window_batches, maximum_test_context
 from timebench.pipeline import tasks
 from timebench.pipeline.runs import allocate_run, load_manifest
-from timebench.proposal.ridge import RidgeConfig, fit_ridge, prepare_ridge
+from timebench.proposal.ridge import (RidgeConfig, fit_ridge, load_fitted,
+    load_problem, prepare_ridge, save_fitted, save_problem, solve_ridge)
 from timebench.results.evaluate import evaluate_batches
 from timebench.results.metrics import METRICS, compute_window_metrics, summarize_metrics
 from timebench.results.reporting import aggregate_seed_rows, seed_statistics
@@ -97,6 +98,20 @@ class LinearPipelineCheck(unittest.TestCase):
         expected = (centered_z @ centered_z.T / 4) @ expected_dual
         np.testing.assert_allclose(fitted.predict(batch(x, y)), expected.reshape(4, 2, 2))
 
+    def test_training_and_coefficient_cache_round_trip(self):
+        rng = np.random.default_rng(8)
+        x = rng.normal(size=(6, 2, 4))
+        y = np.repeat(x[:, :, -1:], 2, axis=2)
+        problem = prepare_ridge([batch(x, y)], RidgeConfig(mode="joint", alpha=.1))
+        with tempfile.TemporaryDirectory(dir=ROOT / "outputs") as directory:
+            root = Path(directory)
+            save_problem(problem, root)
+            restored_problem = load_problem(root)
+            fitted = solve_ridge(restored_problem, .2)
+            save_fitted(fitted, root)
+            restored = load_fitted(root)
+            np.testing.assert_allclose(restored.predict(batch(x, y)), fitted.predict(batch(x, y)))
+
     def test_three_variate_modes(self):
         rng = np.random.default_rng(4)
         x = rng.normal(size=(8, 3, 4))
@@ -129,11 +144,15 @@ class LinearPipelineCheck(unittest.TestCase):
         with tempfile.TemporaryDirectory(dir=ROOT / "outputs") as directory:
             values = config(directory)
             values["experiment"] = values["study"] = "default"
+            allocated = {}
             def short_allocate(identity_root, **kwargs):
-                return allocate_run(Path(directory) / "default/tasks/task", **kwargs)
+                key = str(identity_root)
+                root = allocated.setdefault(key, Path(directory) / "short" / str(len(allocated)))
+                return allocate_run(root, **kwargs)
             with patch.object(tasks, "allocate_run", side_effect=short_allocate):
                 run = tasks.run_panel_task(values, setting, panel(3))
                 self.assertEqual(load_manifest(run)["status"], "completed")
+                self.assertEqual(len(allocated), 6)
                 self.assertNotIn("seed_", str(run))
                 manifest = load_manifest(run)
                 self.assertIsNone(manifest["pipeline_config"]["seed"])

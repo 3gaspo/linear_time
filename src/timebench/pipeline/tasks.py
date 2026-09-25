@@ -12,11 +12,13 @@ import numpy as np
 from timebench.data.grid import WindowSetting
 from timebench.data.splits import split_users
 from timebench.data.time import TimePanel
-from timebench.data.windows import iter_window_batches, maximum_test_context
+from timebench.data.windows import (iter_window_batches, maximum_test_context,
+    validation_origin_counts)
 from timebench.paths import dataset_storage_root, outputs_root
-from timebench.proposal.ridge import RidgeConfig, prepare_ridge, solve_ridge
+from timebench.proposal.ridge import (RidgeConfig, load_fitted, load_problem,
+    prepare_ridge, save_fitted, save_problem, solve_ridge)
 from timebench.results.evaluate import evaluate_batches, validation_score
-from .runs import allocate_run
+from .runs import allocate_run, manifest_reference
 
 LOGGER = logging.getLogger(__name__)
 
@@ -34,19 +36,28 @@ def _slug(value: str) -> str:
     return re.sub(r"[^a-zA-Z0-9_.-]+", "_", value).strip("_") or "target"
 
 
-def select_alpha(problem, alphas, validation_batches, metric, epsilon):
+def _dependency_reference(path: Path) -> dict:
+    return manifest_reference(path)
+
+
+def select_alpha(problem, alphas, validation_batches, metric, epsilon, default_alpha):
     scores = []
     for alpha in alphas:
         candidate = solve_ridge(problem, alpha, calculate_condition=False)
         score = validation_score(validation_batches(), candidate, metric, epsilon)
         scores.append({"alpha": alpha, "score": score})
         LOGGER.info("Validation alpha=%s metric=%s score=%s", alpha, metric, score)
-    best = min(scores, key=lambda row: (row["score"], row["alpha"]))
-    return best["alpha"], scores
+    usable = [row for row in scores if row["score"] is not None]
+    if not usable:
+        return float(default_alpha), scores, "no_usable_validation_windows"
+    best = min(usable, key=lambda row: (row["score"], row["alpha"]))
+    return best["alpha"], scores, None
 
 
 def run_panel_task(config: dict, setting: WindowSetting, panel: TimePanel,
-    *, seed: int | None = None) -> Path:
+                   *, seed: int | None = None) -> Path:
+    from timebench.pipeline.runtime_resources import log_selected_device
+    log_selected_device('cpu', stage='fit_evaluate', component='exact_ridge')
     study, data = config["study"], config["data"]
     proposed_L = setting.L
     L = min(proposed_L, maximum_test_context(panel, setting.test_length))
@@ -81,11 +92,11 @@ def run_panel_task(config: dict, setting: WindowSetting, panel: TimePanel,
             if study == "user_generalization" else None),
         "val_length": setting.val_length, "test_length": setting.test_length,
         "train_stride": int(data["train_stride"]),
-        "evaluation_stride": setting.H if data["evaluation_stride"] is None else int(data["evaluation_stride"]),
+        "evaluation_stride": setting.H,
         "constant_policy": policy, "constant_epsilon": float(data["constant_epsilon"]),
         "proposed_L": proposed_L, "effective_L": L,
         "L_cap": "min(proposed_L, history available at earliest test origin)",
-        "validation_origin": "first TIME validation origin with effective_L history",
+        "validation_origin": "walk backward from first test origin at stride H",
         "validation": validation,
     }
     identity = {"dataset": setting.dataset, "panel": panel.panel_id,
@@ -131,22 +142,98 @@ def run_panel_task(config: dict, setting: WindowSetting, panel: TimePanel,
             "val_length": setting.val_length, "test_length": setting.test_length,
             "batch_size": int(config["runtime"]["batch_size"]),
             "constant_epsilon": float(data["constant_epsilon"])}
-        started = perf_counter()
-        problem = prepare_ridge(iter_window_batches(**window, members=fit_members,
-            split="train", stride=int(data["train_stride"]), remove_constants=remove_train), model_config)
-        statistics_seconds = perf_counter() - started
-        started = perf_counter()
-        selected_alpha, scores = select_alpha(problem, alphas,
-            lambda: iter_window_batches(**window, members=fit_members, split="valid",
-                stride=pipeline_config["evaluation_stride"], remove_constants=remove_eval),
-            validation["metric"], float(config["evaluation"]["epsilon"]))
-        selection_seconds = perf_counter() - started
-        started = perf_counter()
-        model = solve_ridge(problem, selected_alpha)
-        solve_seconds = perf_counter() - started
-        write_json(handle.run_dir / "alpha_selection.json", {**validation,
-            "selected_alpha": selected_alpha, "scores": scores,
-            "tie_rule": "smaller_alpha", "training_interval": "train_only"})
+        relative = root.relative_to(task_root(config))
+        cache_base = task_root(config).parent / "cache"
+        cache_runtime = {"batch_size": int(config["runtime"]["batch_size"]),
+            "device": "cpu", "dtype": "float64"}
+        cache_provenance = {"dataset_path": str(Path(data["storage_path"] or dataset_storage_root()) / setting.dataset),
+            "parent_task_manifest": str(handle.run_dir / "manifest.json")}
+        training_model = {key: value for key, value in asdict(model_config).items() if key != "alpha"}
+        training_pipeline = {"stage": "training_statistics", "members": list(fit_members),
+            "split": "train", "L": L, "H": setting.H,
+            "val_length": setting.val_length, "test_length": setting.test_length,
+            "stride": int(data["train_stride"]), "constant_policy": policy,
+            "constant_epsilon": float(data["constant_epsilon"])}
+        training_handle = allocate_run(cache_base / "training_statistics" / relative,
+            experiment=f'{config["experiment"]}_training_statistics', identity=identity,
+            model_config=training_model, pipeline_config=training_pipeline,
+            experiment_config={}, runtime_config=cache_runtime,
+            provenance=cache_provenance, policy=config["artifacts"]["conflict_policy"],
+            force=bool(config["artifacts"]["force"]))
+        if training_handle.should_run:
+            with training_handle:
+                started = perf_counter()
+                problem = prepare_ridge(iter_window_batches(**window, members=fit_members,
+                    split="train", stride=int(data["train_stride"]), remove_constants=remove_train), model_config)
+                statistics_seconds = perf_counter() - started
+                files = save_problem(problem, training_handle.run_dir)
+                write_json(training_handle.run_dir / "timing.json", {"statistics_seconds": statistics_seconds})
+                training_handle.complete([*files, "timing.json"])
+        training_run = training_handle.run_dir
+        problem = load_problem(training_run)
+        statistics_seconds = json.loads((training_run / "timing.json").read_text(encoding="utf-8"))["statistics_seconds"]
+
+        validation_batches = list(iter_window_batches(**window, members=fit_members,
+            split="valid", stride=setting.H, remove_constants=remove_eval))
+        origin_counts = validation_origin_counts(panel.values.shape[1], L=L, H=setting.H,
+            val_length=setting.val_length, test_length=setting.test_length)
+        validation_counts = {**origin_counts,
+            "usable": int(sum(len(batch.x) for batch in validation_batches))}
+        selection_pipeline = {"stage": "validation_selection",
+            "training": _dependency_reference(training_run),
+            "alphas": alphas, "default_alpha": model_config.alpha,
+            "metric": validation["metric"], "metric_epsilon": float(config["evaluation"]["epsilon"]),
+            "validation_schedule": "walk_backward_from_first_test_origin_at_stride_H",
+            "validation_support": "finite_context_and_future", "counts": validation_counts,
+            "constant_policy": policy, "constant_epsilon": float(data["constant_epsilon"])}
+        selection_handle = allocate_run(cache_base / "validation_selection" / relative,
+            experiment=f'{config["experiment"]}_validation_selection', identity=identity,
+            model_config={"solver": training_model, "selection": "alpha"},
+            pipeline_config=selection_pipeline, experiment_config={},
+            runtime_config=cache_runtime,
+            provenance={**cache_provenance, "training_manifest": str(training_run / "manifest.json")},
+            policy=config["artifacts"]["conflict_policy"], force=bool(config["artifacts"]["force"]))
+        if selection_handle.should_run:
+            with selection_handle:
+                started = perf_counter()
+                selected_alpha, scores, fallback_reason = select_alpha(problem, alphas,
+                    lambda: iter(validation_batches), validation["metric"],
+                    float(config["evaluation"]["epsilon"]), model_config.alpha)
+                selection_seconds = perf_counter() - started
+                write_json(selection_handle.run_dir / "alpha_selection.json", {**validation,
+                    "selected_alpha": selected_alpha, "scores": scores,
+                    "fallback_reason": fallback_reason, "validation_counts": validation_counts,
+                    "validation_schedule": "walk_backward_from_first_test_origin_at_stride_H",
+                    "tie_rule": "smaller_alpha", "training_interval": "train_only"})
+                write_json(selection_handle.run_dir / "timing.json", {"alpha_selection_seconds": selection_seconds})
+                selection_handle.complete(["alpha_selection.json", "timing.json"])
+        selection_run = selection_handle.run_dir
+        selection_result = json.loads((selection_run / "alpha_selection.json").read_text(encoding="utf-8"))
+        selection_seconds = json.loads((selection_run / "timing.json").read_text(encoding="utf-8"))["alpha_selection_seconds"]
+        selected_alpha = float(selection_result["selected_alpha"])
+
+        coefficient_pipeline = {"stage": "fitted_coefficients",
+            "training": _dependency_reference(training_run), "selected_alpha": selected_alpha}
+        coefficient_handle = allocate_run(cache_base / "fitted_coefficients" / relative,
+            experiment=f'{config["experiment"]}_fitted_coefficients', identity=identity,
+            model_config={**training_model, "alpha": selected_alpha},
+            pipeline_config=coefficient_pipeline, experiment_config={},
+            runtime_config=cache_runtime,
+            provenance={**cache_provenance, "selection_manifest": str(selection_run / "manifest.json")},
+            policy=config["artifacts"]["conflict_policy"], force=bool(config["artifacts"]["force"]))
+        if coefficient_handle.should_run:
+            with coefficient_handle:
+                started = perf_counter()
+                model = solve_ridge(problem, selected_alpha)
+                solve_seconds = perf_counter() - started
+                files = save_fitted(model, coefficient_handle.run_dir)
+                write_json(coefficient_handle.run_dir / "timing.json", {"selected_solve_seconds": solve_seconds})
+                coefficient_handle.complete([*files, "timing.json"])
+        coefficient_run = coefficient_handle.run_dir
+        model = load_fitted(coefficient_run)
+        solve_seconds = json.loads((coefficient_run / "timing.json").read_text(encoding="utf-8"))["selected_solve_seconds"]
+
+        write_json(handle.run_dir / "alpha_selection.json", selection_result)
         write_json(handle.run_dir / "fit_summary.json", model.metadata())
         names = list(model.coefficients)
         arrays = {f"head_{i}": model.coefficients[name] for i, name in enumerate(names)}
@@ -167,12 +254,37 @@ def run_panel_task(config: dict, setting: WindowSetting, panel: TimePanel,
                 continue
             for split in ("valid", "test"):
                 group = f"{population}_{split}"
-                summary, arrays, group_timing = evaluate_batches(
-                    iter_window_batches(**window, members=members, split=split,
-                        stride=pipeline_config["evaluation_stride"], remove_constants=remove_eval),
-                    model, epsilon=float(config["evaluation"]["epsilon"]))
+                evaluation_pipeline = {"stage": "evaluation", "population": population,
+                    "split": split, "members": list(members),
+                    "coefficients": _dependency_reference(coefficient_run),
+                    "stride": setting.H, "constant_policy": policy,
+                    "constant_epsilon": float(data["constant_epsilon"]),
+                    "metric_epsilon": float(config["evaluation"]["epsilon"])}
+                evaluation_handle = allocate_run(
+                    cache_base / "evaluation" / population / split / relative,
+                    experiment=f'{config["experiment"]}_evaluation', identity=identity,
+                    model_config={**training_model, "alpha": selected_alpha},
+                    pipeline_config=evaluation_pipeline, experiment_config={},
+                    runtime_config=cache_runtime,
+                    provenance={**cache_provenance, "coefficient_manifest": str(coefficient_run / "manifest.json")},
+                    policy=config["artifacts"]["conflict_policy"], force=bool(config["artifacts"]["force"]))
+                if evaluation_handle.should_run:
+                    with evaluation_handle:
+                        summary, evaluation_arrays, group_timing = evaluate_batches(
+                            iter_window_batches(**window, members=members, split=split,
+                                stride=setting.H, remove_constants=remove_eval),
+                            model, epsilon=float(config["evaluation"]["epsilon"]))
+                        write_json(evaluation_handle.run_dir / "metrics_summary.json", summary)
+                        np.savez_compressed(evaluation_handle.run_dir / "window_metrics.npz", **evaluation_arrays)
+                        write_json(evaluation_handle.run_dir / "timing.json", group_timing)
+                        evaluation_handle.complete(["metrics_summary.json", "window_metrics.npz", "timing.json"])
+                evaluation_run = evaluation_handle.run_dir
+                summary = json.loads((evaluation_run / "metrics_summary.json").read_text(encoding="utf-8"))
+                group_timing = json.loads((evaluation_run / "timing.json").read_text(encoding="utf-8"))
+                with np.load(evaluation_run / "window_metrics.npz", allow_pickle=False) as saved:
+                    evaluation_arrays = {name: saved[name] for name in saved.files}
                 summaries[group] = summary
-                payloads.update({f"{group}.{name}": values for name, values in arrays.items()})
+                payloads.update({f"{group}.{name}": values for name, values in evaluation_arrays.items()})
                 timing["groups"][group] = group_timing
         write_json(handle.run_dir / "metrics_summary.json", summaries)
         write_json(handle.run_dir / "timing.json", timing)

@@ -35,6 +35,8 @@ def _launch_runs(config, launch_id):
 
 
 def write_study_report(config):
+    from timebench.pipeline.runtime_resources import log_selected_device
+    log_selected_device('cpu', stage='report', component='linear_time')
     study = config["study"]
     report_id = (config["report"]["report_id"] or os.environ.get("TIME_LAUNCH_ID")
         or "manual")

@@ -60,6 +60,16 @@ def maximum_test_context(panel: TimePanel, test_length: int) -> int:
     return panel.values.shape[1] - test_length
 
 
+def validation_origin_counts(length: int, *, L: int, H: int,
+    val_length: int, test_length: int) -> dict[str, int]:
+    test_start = length - test_length
+    test_dates = len(np.arange(test_start, length - H + 1, H, dtype=np.int64))
+    requested = min(test_dates, val_length // H)
+    candidates = test_start - H * np.arange(requested, 0, -1, dtype=np.int64)
+    available = int((candidates >= L).sum())
+    return {"requested": int(requested), "available": available}
+
+
 def iter_window_batches(
     panel: TimePanel, *, members: Sequence[str] | None, split: str,
     L: int, H: int, val_length: int, test_length: int,
@@ -78,9 +88,16 @@ def iter_window_batches(
     lower, upper = time_intervals(length, val_length, test_length)[split]
     if split != "train" and upper - lower < H:
         raise ValueError(f"H={H} does not fit TIME's {split} interval")
-    step = (1 if split == "train" else H) if stride is None else int(stride)
-    origins = np.arange(max(L, lower), upper - H + 1, step, dtype=np.int64)
-    if split != "train" and not len(origins):
+    if split == "valid":
+        counts = validation_origin_counts(length, L=L, H=H,
+            val_length=val_length, test_length=test_length)
+        test_start = length - test_length
+        origins = test_start - H * np.arange(counts["requested"], 0, -1, dtype=np.int64)
+        origins = origins[origins >= L]
+    else:
+        step = (1 if split == "train" else H) if stride is None else int(stride)
+        origins = np.arange(max(L, lower), upper - H + 1, step, dtype=np.int64)
+    if split == "test" and not len(origins):
         raise ValueError(f"No complete {split} window for L={L}, H={H} in {panel.panel_id}")
     prefixes = [seasonal_scale_prefix(row, panel.seasonality) for row in values]
     full_history = fill_missing_history(values)
