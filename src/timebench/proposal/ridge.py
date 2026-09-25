@@ -300,8 +300,11 @@ def solve_ridge(problem: RidgeProblem, alpha: float | None = None,
     config = problem.config if alpha is None else replace(problem.config, alpha=float(alpha))
     if problem.joint_features is not None:
         z, y = problem.joint_features, problem.joint_targets
-        primal_bytes = 8 * (z.shape[1] ** 2 + z.shape[1] * y.shape[1])
-        if z.shape[1] <= len(z) and primal_bytes <= 1_000_000_000:
+        windows, inputs, outputs = len(z), z.shape[1], y.shape[1]
+        itemsize = np.dtype(np.float64).itemsize
+        primal_state_bytes = itemsize * (inputs ** 2 + inputs * outputs)
+        dual_state_bytes = itemsize * (windows ** 2 + windows * inputs + windows * outputs)
+        if primal_state_bytes <= dual_state_bytes:
             feature_mean = z.mean(axis=0) if config.intercept else np.zeros(z.shape[1])
             target_mean = y.mean(axis=0) if config.intercept else np.zeros(y.shape[1])
             centered_z, centered_y = z - feature_mean, y - target_mean
@@ -315,6 +318,8 @@ def solve_ridge(problem: RidgeProblem, alpha: float | None = None,
             diagnostics = {problem.joint_panel_id: {"windows": len(z),
                 "inputs": z.shape[1], "outputs": y.shape[1],
                 "coefficient_shape": list(coefficient.shape),
+                "estimated_primal_state_bytes": primal_state_bytes,
+                "estimated_dual_state_bytes": dual_state_bytes,
                 "regularized_condition_number": condition if condition is not None and np.isfinite(condition) else None,
                 "normal_equation_residual": float(np.linalg.norm(system @ slopes - rhs))}}
             return FittedRidge(config, problem.L, problem.H, problem.member_ids,
@@ -329,6 +334,8 @@ def solve_ridge(problem: RidgeProblem, alpha: float | None = None,
         diagnostics = {problem.joint_panel_id: {"windows": len(z),
             "inputs": z.shape[1], "outputs": y.shape[1],
             "dual_shape": list(dual.shape),
+            "estimated_primal_state_bytes": primal_state_bytes,
+            "estimated_dual_state_bytes": dual_state_bytes,
             "regularized_condition_number": condition if condition is not None and np.isfinite(condition) else None,
             "dual_equation_residual": float(np.linalg.norm(system @ dual - centered_y))}}
         return FittedRidge(config, problem.L, problem.H, problem.member_ids, {}, diagnostics,
