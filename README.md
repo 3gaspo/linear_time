@@ -92,6 +92,8 @@ artifacts and private records. `sync_results_to_dgx.sh` and `publish_job.sh`
 share `artifact_selection.py`; lightweight mode keeps reports and compact
 metadata while excluding raw arrays. Runtime artifacts and logs remain inside
 this project's Selena scratch root.
+That scratch location is the default; explicit `OUTPUTS_ROOT` and `LOGS_ROOT`
+values take precedence when a launcher deliberately selects another root.
 Every allocation records visible accelerators, GPU/host memory, and explicit
 cgroup availability before its stages. Fit/evaluation and report stages emit
 the shared selected-device event with `cpu`.
