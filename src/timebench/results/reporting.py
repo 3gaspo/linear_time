@@ -31,7 +31,10 @@ def load_performance_rows(run_dirs):
                     "inference_seconds": timing["groups"][population]["prediction_seconds"][method],
                     "fit_seconds": timing["fit_seconds"] if method == "ridge" else 0.0,
                     "alpha_selection_seconds": timing["alpha_selection_seconds"] if method == "ridge" else 0.0,
-                    "seasonal_mase_variance": payload["seasonal_mase_variance"]}
+                    "seasonal_mase_variance": payload["seasonal_mase_variance"],
+                    "prediction_nan_values": payload["prediction_outputs"]["nan_values"],
+                    "prediction_values": payload["prediction_outputs"]["evaluation_values"],
+                    "prediction_nan_rate": payload["prediction_outputs"]["nan_rate"]}
                 for metric in METRICS:
                     row[metric] = payload["metrics"][metric]["mean"]
                     row[f"{metric}_std"] = payload["metrics"][metric]["std"]
@@ -46,9 +49,8 @@ def load_performance_rows(run_dirs):
 
 def seed_statistics(values):
     finite = [float(value) for value in values if value is not None and np.isfinite(value)]
-    complete = bool(values) and len(finite) == len(values)
-    mean = float(np.mean(finite)) if complete else None
-    std = float(np.std(finite, ddof=1)) if complete and len(finite) > 1 else None
+    mean = float(np.nanmean(finite)) if finite else None
+    std = float(np.nanstd(finite, ddof=1)) if len(finite) > 1 else None
     return {"mean": mean, "seed_std": std, "seed_count": len(values),
         "finite_seeds": len(finite), "lower": mean - std if std is not None else None,
         "upper": mean + std if std is not None else None, "seed_dispersion_ddof": 1}
@@ -79,6 +81,10 @@ def aggregate_seed_rows(rows, seeds):
                 for suffix in ("std", "variance", "user_mean")),
                 "seasonal_mase_variance", "inference_seconds", "fit_seconds", "alpha_selection_seconds"]:
             row[field] = seed_statistics([item[field] for item in repeated])["mean"]
+        row["prediction_nan_values"] = sum(item["prediction_nan_values"] for item in repeated)
+        row["prediction_values"] = sum(item["prediction_values"] for item in repeated)
+        row["prediction_nan_rate"] = (
+            row["prediction_nan_values"] / row["prediction_values"] if row["prediction_values"] else None)
         row["seed_count"] = len(seeds)
         row["selected_alphas"] = [item["selected_alpha"] for item in repeated]
         result.append(row)

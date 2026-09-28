@@ -143,7 +143,7 @@ class LinearPipelineCheck(unittest.TestCase):
         setting = WindowSetting("SG_PM25/H", "short", "short", 12, 4, 12, 12)
         with tempfile.TemporaryDirectory(dir=ROOT / "outputs") as directory:
             values = config(directory)
-            values["experiment"] = values["study"] = "default"
+            values["experiment"] = values["study"] = "joint_panel"
             allocated = {}
             def short_allocate(identity_root, **kwargs):
                 key = str(identity_root)
@@ -155,7 +155,7 @@ class LinearPipelineCheck(unittest.TestCase):
                 self.assertEqual(len(allocated), 6)
                 self.assertNotIn("seed_", str(run))
                 manifest = load_manifest(run)
-                self.assertIsNone(manifest["pipeline_config"]["seed"])
+                self.assertNotIn("seed", manifest["pipeline_config"])
                 self.assertEqual(manifest["identity"]["mode"], "joint")
                 summary = json.loads((run / "metrics_summary.json").read_text())
                 self.assertEqual(summary["all_test"]["seasonal_naive"]["metrics"]["scaled_mase"]["mean"], 1)
@@ -166,7 +166,8 @@ class LinearPipelineCheck(unittest.TestCase):
             "mode": "shared", "model": "ridge", "population": "unseen_test",
             "study": "user_generalization", "selected_alpha": .1,
             "seasonal_mase_variance": 1., "inference_seconds": 1., "fit_seconds": 1.,
-            "alpha_selection_seconds": 1.}
+            "alpha_selection_seconds": 1., "prediction_nan_values": 0,
+            "prediction_values": 6}
         rows = []
         for seed in (0, 1, 2):
             row = {**base, "seed": seed}

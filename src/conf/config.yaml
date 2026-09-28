@@ -2,8 +2,8 @@ defaults:
   - override hydra/job_logging: stdout
   - _self_
 
-experiment: default
-study: default  # default/user_generalization/variate_modes
+experiment: joint_panel
+study: joint_panel  # joint_panel/user_generalization/variate_modes
 dataset: SG_PM25/H
 L_term: short
 H_term: short
@@ -46,14 +46,14 @@ variate_modes:
 
 report:
   plots: true
-  report_id: null
+  launch_id: null
 
 runtime:
   batch_size: 512
 
 artifacts:
-  output_root: null  # null uses TIME_OUTPUTS or project/outputs
-  conflict_policy: overwrite_exact
+  output_root: null  # null uses TIME_OUTPUTS or project/outputs/dgx
+  conflict_policy: skip
   force: false
 
 hydra:
@@ -62,6 +62,7 @@ hydra:
       simple:
         format: '[%(asctime)s] %(levelname)s %(message)s'
   run:
-    dir: ${oc.env:TIME_LOGS,logs}/hydra/${now:%Y-%m-%d}/${now:%H-%M-%S}
+    dir: ${oc.env:TIME_LOGS,logs/dgx}/${study}/hydra/${oc.env:TIME_HYDRA_STAGE,run}
+  output_subdir: null
   job:
     chdir: false

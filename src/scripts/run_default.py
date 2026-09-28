@@ -9,7 +9,7 @@ from timebench.pipeline.default import run_study
 @hydra.main(version_base=None, config_path="../conf", config_name="config")
 def main(config: DictConfig):
     values = OmegaConf.to_container(config, resolve=True)
-    values["study"] = values["experiment"] = "default"
+    values["study"] = values["experiment"] = "joint_panel"
     run_study(values)
 
 

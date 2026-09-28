@@ -1,8 +1,8 @@
 #!/bin/bash
 #SBATCH --job-name=linear_default
 #SBATCH --gres=gpu:1
-#SBATCH --output=/scratch/users/%u/codes/linear_time/logs/%x_%j.out
-#SBATCH --error=/scratch/users/%u/codes/linear_time/logs/%x_%j.err
+#SBATCH --output=/scratch/users/%u/codes/linear_time/logs/joint_panel/slurm/%x_%j.out
+#SBATCH --error=/scratch/users/%u/codes/linear_time/logs/joint_panel/slurm/%x_%j.err
 #SBATCH --time=23:00:00
 #SBATCH --partition=an
 #SBATCH --qos=an_preemptable
@@ -19,5 +19,5 @@ cd "$PROJECT_ROOT"
 export PROJECT_ROOT
 source "$PROJECT_ROOT/src/slurm/selena_runtime.sh"
 export TIME_LAUNCH_ID="${TIME_LAUNCH_ID:-selena_${SLURM_JOB_ID}}"
-export LINEAR_STUDY=default
+export LINEAR_STUDY=joint_panel
 source "$PROJECT_ROOT/src/slurm/study.sh"

@@ -4,6 +4,7 @@ import os
 
 from timebench.data.grid import DEFAULT_EXCLUDED, load_grid
 from timebench.data.time import load_dataset_semantics, load_time_panels
+from timebench.paths import logs_root
 from .tasks import run_panel_task, task_root, write_json
 
 
@@ -18,7 +19,7 @@ def study_datasets(config):
 
 def run_study(config):
     study = config["study"]
-    if study not in {"default", "user_generalization", "variate_modes"}:
+    if study not in {"joint_panel", "user_generalization", "variate_modes"}:
         raise ValueError("Unknown study")
     seeds = [int(seed) for seed in config["user_generalization"]["seeds"]]
     if len(set(seeds)) != len(seeds) or not seeds:
@@ -51,11 +52,12 @@ def run_study(config):
                 else:
                     task_config = {**config, "model": {**config["model"], "mode": "joint"}}
                     paths.append(run_panel_task(task_config, setting, panel))
-    root = task_root(config).parent
     launch = os.environ.get("TIME_LAUNCH_ID", "manual")
-    launch_root = root / "launches" / launch
-    launch_root.mkdir(parents=True, exist_ok=True)
-    write_json(launch_root / f"{study}_manifest.json", {
+    launch_log = (
+        logs_root() / study / "workflow_status" / "launches" / f"{launch}.json"
+    )
+    launch_log.parent.mkdir(parents=True, exist_ok=True)
+    write_json(launch_log, {
         "schema_version": 1, "experiment": config["experiment"], "study": study,
         "mode": config["experiment_mode"], "datasets": study_datasets(config),
         "seeds": seeds if study == "user_generalization" else [],

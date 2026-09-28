@@ -70,8 +70,9 @@ time_workflow_init() {
     : "${TIME_LAUNCH_ID:?TIME_LAUNCH_ID must be set}"
     local status_name="${TIME_STATUS_NAME:-$TIME_TASK_NAME}"
     status_name="${status_name//[^a-zA-Z0-9_.-]/_}"
-    TIME_STATUS_ROOT="$TIME_LOGS/workflow_status/$TIME_WORKFLOW_NAME/$TIME_LAUNCH_ID"
-    TIME_STATUS_FILE="$TIME_STATUS_ROOT/$status_name.status"
+    local launch_name="${TIME_LAUNCH_ID//[^a-zA-Z0-9_.-]/_}"
+    TIME_STATUS_ROOT="$TIME_LOGS/${TIME_EXPERIMENT:?TIME_EXPERIMENT must be set}/workflow_status/$TIME_WORKFLOW_NAME"
+    TIME_STATUS_FILE="$TIME_STATUS_ROOT/${launch_name}__${status_name}.status"
     TIME_LAUNCHED_AT="$(date -u '+%Y-%m-%dT%H:%M:%SZ')"
     mkdir -p "$TIME_STATUS_ROOT"
     trap time_workflow_on_exit EXIT
@@ -81,6 +82,7 @@ time_workflow_init() {
 
 time_stage_start() {
     TIME_ACTIVE_STAGE="$1"
+    export TIME_HYDRA_STAGE="$TIME_ACTIVE_STAGE"
     time_write_status running 0
     time_log "stage $TIME_ACTIVE_STAGE started"
 }
@@ -88,6 +90,7 @@ time_stage_start() {
 time_stage_complete() {
     time_log "stage $TIME_ACTIVE_STAGE completed status=success"
     TIME_ACTIVE_STAGE=""
+    unset TIME_HYDRA_STAGE
     time_write_status running 0
 }
 

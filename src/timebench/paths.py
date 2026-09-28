@@ -17,8 +17,8 @@ def dataset_storage_root() -> Path:
 
 
 def outputs_root() -> Path:
-    return _configured_path("TIME_OUTPUTS", PROJECT_ROOT / "outputs")
+    return _configured_path("TIME_OUTPUTS", PROJECT_ROOT / "outputs" / "dgx")
 
 
 def logs_root() -> Path:
-    return _configured_path("TIME_LOGS", PROJECT_ROOT / "logs")
+    return _configured_path("TIME_LOGS", PROJECT_ROOT / "logs" / "dgx")

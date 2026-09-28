@@ -109,7 +109,7 @@ def iter_window_batches(
         eligible &= (np.isfinite(y).all(axis=(1, 2)) if split == "train"
             else np.isfinite(y).any(axis=(1, 2)))
         x = fill_missing_history(raw_x)
-        constant = x.std(axis=2, ddof=0) <= constant_epsilon
+        constant = np.nanstd(x, axis=2, ddof=0) <= constant_epsilon
         if remove_constants:
             eligible &= ~constant.any(axis=1)
         scales = np.column_stack([np.divide(

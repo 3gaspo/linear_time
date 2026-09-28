@@ -1,8 +1,8 @@
 #!/bin/bash
 #SBATCH --job-name=linear_variates
 #SBATCH --gres=gpu:1
-#SBATCH --output=/scratch/users/%u/codes/linear_time/logs/%x_%j.out
-#SBATCH --error=/scratch/users/%u/codes/linear_time/logs/%x_%j.err
+#SBATCH --output=/scratch/users/%u/codes/linear_time/logs/variate_modes/slurm/%x_%j.out
+#SBATCH --error=/scratch/users/%u/codes/linear_time/logs/variate_modes/slurm/%x_%j.err
 #SBATCH --time=23:00:00
 #SBATCH --partition=an
 #SBATCH --qos=an_preemptable

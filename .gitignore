@@ -12,10 +12,12 @@ __pycache__/
 *.py[cod]
 .ipynb_checkpoints/
 .pytest_cache/
-outputs/*
-!outputs/.gitkeep
-logs/*
-!logs/.gitkeep
+outputs/**
+!outputs/**/
+!outputs/**/.gitkeep
+logs/**
+!logs/**/
+!logs/**/.gitkeep
 datasets/*
 !datasets/.gitkeep
 weights/*

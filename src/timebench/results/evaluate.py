@@ -27,6 +27,10 @@ def evaluate_batches(batches: Iterable[WindowBatch], model: FittedRidge, *, epsi
     losses = {method: {metric: [] for metric in METRICS} for method in methods}
     metadata = {name: [] for name in ("member_ids", "origins", "constant")}
     timings = {method: 0.0 for method in methods}
+    prediction_outputs = {
+        method: {"nan_values": 0, "evaluation_values": 0}
+        for method in methods
+    }
     finite_targets = 0
     window_count = 0
     for batch in batches:
@@ -46,6 +50,11 @@ def evaluate_batches(batches: Iterable[WindowBatch], model: FittedRidge, *, epsi
                 if batch.seasonal_prediction is None:
                     raise ValueError("Evaluation requires Seasonal Naive")
                 prediction = batch.seasonal_prediction
+            required = np.isfinite(batch.y)
+            prediction_outputs[method]["nan_values"] += int(
+                (required & np.isnan(prediction)).sum()
+            )
+            prediction_outputs[method]["evaluation_values"] += int(required.sum())
             timings[method] += (batch.seasonal_prediction_seconds if method == "seasonal_naive"
                 else perf_counter() - started)
             values = compute_window_metrics(prediction, batch.y, batch.x,
@@ -60,8 +69,14 @@ def evaluate_batches(batches: Iterable[WindowBatch], model: FittedRidge, *, epsi
     for method in methods:
         metrics = {name: np.concatenate(parts, axis=0) if parts else np.empty((0, 0))
             for name, parts in losses[method].items()}
+        outputs = prediction_outputs[method]
+        outputs["nan_rate"] = (
+            outputs["nan_values"] / outputs["evaluation_values"]
+            if outputs["evaluation_values"] else None
+        )
         summaries[method] = {"status": "evaluated" if len(arrays["member_ids"]) else "no_windows",
-            "metrics": summarize_metrics(metrics, arrays["member_ids"])}
+            "metrics": summarize_metrics(metrics, arrays["member_ids"]),
+            "prediction_outputs": outputs}
         arrays.update({f"{method}.{name}": values.reshape(-1) for name, values in metrics.items()})
     seasonal = summaries["seasonal_naive"]["metrics"]["mase"]
     denominator = seasonal["mean"]
@@ -77,5 +92,6 @@ def evaluate_batches(batches: Iterable[WindowBatch], model: FittedRidge, *, epsi
             metrics["scaled_mase" if name == "mase" else "w10_scaled_mase"] = scaled
         summaries[method]["seasonal_mase_variance"] = seasonal["variance"]
     return summaries, arrays, {"prediction_seconds": timings,
+        "prediction_outputs": prediction_outputs,
         "windows": window_count,
         "finite_targets": finite_targets, "device": "cpu"}

@@ -79,7 +79,7 @@ def run_panel_task(config: dict, setting: WindowSetting, panel: TimePanel,
     remove_train = policy in {"remove_train_windows", "remove_all_windows"}
     remove_eval = policy in {"remove_eval_windows", "remove_all_windows"}
     model_config = RidgeConfig(**config["model"])
-    if study == "default" and model_config.mode != "joint":
+    if study == "joint_panel" and model_config.mode != "joint":
         raise ValueError("The default experiment is the joint N*L to N*H model")
     if study == "user_generalization" and model_config.mode != "shared":
         raise ValueError("Unseen-user evaluation requires the shared independent model")
@@ -88,7 +88,7 @@ def run_panel_task(config: dict, setting: WindowSetting, panel: TimePanel,
         "population": "fit_members_valid", "refit_validation": False}
     pipeline_config = {
         "study": study, "user_split": study == "user_generalization",
-        "seed": seed, "train_user_fraction": (float(data["train_user_fraction"])
+        "train_user_fraction": (float(data["train_user_fraction"])
             if study == "user_generalization" else None),
         "val_length": setting.val_length, "test_length": setting.test_length,
         "train_stride": int(data["train_stride"]),
@@ -99,6 +99,8 @@ def run_panel_task(config: dict, setting: WindowSetting, panel: TimePanel,
         "validation_origin": "walk backward from first test origin at stride H",
         "validation": validation,
     }
+    if seed is not None:
+        pipeline_config["seed"] = seed
     identity = {"dataset": setting.dataset, "panel": panel.panel_id,
         "structure": panel.structure, "members": len(fit_members),
         "L_term": setting.L_term, "H_term": setting.H_term,
@@ -136,8 +138,6 @@ def run_panel_task(config: dict, setting: WindowSetting, panel: TimePanel,
             "members": list(panel.member_ids), "frequency": panel.frequency,
             "seasonality": panel.seasonality, "start": panel.start,
             "length": panel.values.shape[1]})
-        write_json(handle.run_dir / "config.json", {"identity": identity,
-            "model": scientific_model, "pipeline": pipeline_config})
         window = {"panel": panel, "L": L, "H": setting.H,
             "val_length": setting.val_length, "test_length": setting.test_length,
             "batch_size": int(config["runtime"]["batch_size"]),
@@ -153,7 +153,8 @@ def run_panel_task(config: dict, setting: WindowSetting, panel: TimePanel,
             "split": "train", "L": L, "H": setting.H,
             "val_length": setting.val_length, "test_length": setting.test_length,
             "stride": int(data["train_stride"]), "constant_policy": policy,
-            "constant_epsilon": float(data["constant_epsilon"])}
+            "constant_epsilon": float(data["constant_epsilon"]),
+            "statistics_layout": "grouped_output_grams_or_exact_joint_windows"}
         training_handle = allocate_run(cache_base / "training_statistics" / relative,
             experiment=f'{config["experiment"]}_training_statistics', identity=identity,
             model_config=training_model, pipeline_config=training_pipeline,
@@ -259,7 +260,8 @@ def run_panel_task(config: dict, setting: WindowSetting, panel: TimePanel,
                     "coefficients": _dependency_reference(coefficient_run),
                     "stride": setting.H, "constant_policy": policy,
                     "constant_epsilon": float(data["constant_epsilon"]),
-                    "metric_epsilon": float(config["evaluation"]["epsilon"])}
+                    "metric_epsilon": float(config["evaluation"]["epsilon"]),
+                    "nan_policy": "omit_nan_predictions_report_counts_reject_infinity"}
                 evaluation_handle = allocate_run(
                     cache_base / "evaluation" / population / split / relative,
                     experiment=f'{config["experiment"]}_evaluation', identity=identity,
@@ -289,7 +291,7 @@ def run_panel_task(config: dict, setting: WindowSetting, panel: TimePanel,
         write_json(handle.run_dir / "metrics_summary.json", summaries)
         write_json(handle.run_dir / "timing.json", timing)
         np.savez_compressed(handle.run_dir / "window_metrics.npz", **payloads)
-        handle.complete(["config.json", "member_split.json", "panel_metadata.json",
+        handle.complete(["member_split.json", "panel_metadata.json",
             "alpha_selection.json", "fit_summary.json", "coefficients.npz",
             "coefficient_heads.json", "metrics_summary.json", "timing.json", "window_metrics.npz"])
     return handle.run_dir

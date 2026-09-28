@@ -80,8 +80,10 @@ metadata, window metrics, summaries and independent timings. Reusable caches
 under `outputs/<study>/cache/` separately own training statistics, validation
 alpha selection, fitted coefficients, and each population/split evaluation.
 Changing the candidate alpha list reuses unchanged training statistics; only a
-changed selected alpha invalidates coefficients and their evaluations. Reports live at
-`outputs/reports/<study>/<report-id>/`. They include MASE, MAE, MSE, NMSE,
+changed selected alpha invalidates coefficients and their evaluations. Reports
+live directly below `<O>/<study>/reports/`, where `<O>` is `outputs/dgx` for
+DGX/local execution, Selena's project scratch output root during execution, or
+`outputs/selena` after synchronization. They include MASE, MAE, MSE, NMSE,
 relative MSE (`rmse`), their W10 versions, matched Seasonal-scaled MASE, L-H
 heatmaps and paired PNG/PDF exports. Only the user-generalization report reduces
 over seeds and shows mean ± sample SD; those are dispersion bounds, not
@@ -94,6 +96,11 @@ metadata while excluding raw arrays. Runtime artifacts and logs remain inside
 this project's Selena scratch root.
 That scratch location is the default; explicit `OUTPUTS_ROOT` and `LOGS_ROOT`
 values take precedence when a launcher deliberately selects another root.
+DGX/local logs use `logs/dgx/<study>/`, synchronized Selena logs use
+`logs/selena/<study>/`, and every Slurm stream, Hydra directory, stage log, and
+workflow status remains below its study. Launch IDs stay in manifests and log
+filenames rather than output directories. Each `run_n/manifest.json` is the
+authoritative run configuration and lifecycle record.
 Every allocation records visible accelerators, GPU/host memory, and explicit
 cgroup availability before its stages. Fit/evaluation and report stages emit
 the shared selected-device event with `cpu`.

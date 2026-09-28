@@ -40,7 +40,7 @@ class RidgeConfig:
 
 
 def context_statistics(x: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
-    return x.mean(axis=2, keepdims=True), x.std(axis=2, ddof=0, keepdims=True)
+    return np.nanmean(x, axis=2, keepdims=True), np.nanstd(x, axis=2, ddof=0, keepdims=True)
 
 
 def loss_denominator(x: np.ndarray, loss: str, epsilon: float) -> np.ndarray:
@@ -78,6 +78,7 @@ def _with_intercept(features: np.ndarray, intercept: bool) -> np.ndarray:
 class _Statistics:
     gram: np.ndarray
     rhs: np.ndarray
+    output_groups: np.ndarray
     windows: int = 0
     fitted_cells: int = 0
     bypassed_cells: int = 0
@@ -156,6 +157,7 @@ def save_problem(problem: RidgeProblem, destination: str | Path) -> list[str]:
     for index, (name, state) in enumerate(problem.statistics.items()):
         arrays[f"gram_{index}"] = state.gram
         arrays[f"rhs_{index}"] = state.rhs
+        arrays[f"output_groups_{index}"] = state.output_groups
         states[str(index)] = {"name": name, "windows": state.windows,
             "fitted_cells": state.fitted_cells, "bypassed_cells": state.bypassed_cells}
     if problem.joint_features is not None:
@@ -167,6 +169,8 @@ def save_problem(problem: RidgeProblem, destination: str | Path) -> list[str]:
         "L": problem.L, "H": problem.H, "member_ids": list(problem.member_ids),
         "states": states, "joint_panel_id": problem.joint_panel_id,
         "representation": "joint_windows" if problem.joint_features is not None else "sufficient_statistics",
+        "statistics_layout": ("joint_windows" if problem.joint_features is not None
+                              else "grouped_output_grams"),
     }, indent=2, sort_keys=True) + "\n", encoding="utf-8")
     return ["training_statistics.npz", "training_statistics.json"]
 
@@ -178,7 +182,7 @@ def load_problem(source: str | Path) -> RidgeProblem:
     statistics = {}
     for index, state in metadata["states"].items():
         statistics[state["name"]] = _Statistics(
-            arrays[f"gram_{index}"], arrays[f"rhs_{index}"],
+            arrays[f"gram_{index}"], arrays[f"rhs_{index}"], arrays[f"output_groups_{index}"],
             int(state["windows"]), int(state["fitted_cells"]), int(state["bypassed_cells"]),
         )
     joint_features = arrays["joint_features"] if "joint_features" in arrays.files else None
@@ -221,21 +225,33 @@ def load_fitted(source: str | Path) -> FittedRidge:
     )
 
 
-def _new_statistics(outputs: int, width: int) -> _Statistics:
-    return _Statistics(np.zeros((outputs, width, width)), np.zeros((width, outputs)))
+def _new_statistics(outputs: int, width: int, output_groups: np.ndarray) -> _Statistics:
+    output_groups = np.asarray(output_groups, dtype=np.int64)
+    if output_groups.shape != (outputs,) or not np.array_equal(
+        np.unique(output_groups), np.arange(output_groups.max() + 1)
+    ):
+        raise ValueError("Output groups must be contiguous and cover every output")
+    return _Statistics(
+        np.zeros((output_groups.max() + 1, width, width)),
+        np.zeros((width, outputs)),
+        output_groups,
+    )
 
 
 def _accumulate(state: _Statistics, z: np.ndarray, target: np.ndarray,
     weights: np.ndarray, bypass: np.ndarray) -> None:
     state.windows += len(z)
-    for output in range(target.shape[1]):
-        active = ~bypass[:, output]
-        state.fitted_cells += int(active.sum())
-        state.bypassed_cells += int((~active).sum())
+    for group in range(len(state.gram)):
+        outputs = np.flatnonzero(state.output_groups == group)
+        active = ~bypass[:, group]
+        state.fitted_cells += int(active.sum()) * len(outputs)
+        state.bypassed_cells += int((~active).sum()) * len(outputs)
         if active.any():
-            za, qa = z[active], weights[active, output]
-            state.gram[output] += za.T @ (qa[:, None] * za)
-            state.rhs[:, output] += za.T @ (qa * target[active, output])
+            za, qa = z[active], weights[active, group]
+            state.gram[group] += za.T @ (qa[:, None] * za)
+            state.rhs[:, outputs] += za.T @ (
+                qa[:, None] * target[active][:, outputs]
+            )
 
 
 def prepare_ridge(batches: Iterable[WindowBatch], config: RidgeConfig) -> RidgeProblem:
@@ -269,23 +285,30 @@ def prepare_ridge(batches: Iterable[WindowBatch], config: RidgeConfig) -> RidgeP
                 continue
             z = _with_intercept(features.reshape(B, -1), config.intercept)
             y = target.reshape(B, N * H)
-            q = np.repeat(weights, H, axis=1)
-            bypass = np.repeat(bypass_members, H, axis=1)
-            state = statistics.setdefault(batch.panel_id, _new_statistics(N * H, z.shape[1]))
+            q = weights
+            bypass = bypass_members
+            groups = np.repeat(np.arange(N), H)
+            state = statistics.setdefault(
+                batch.panel_id, _new_statistics(N * H, z.shape[1], groups)
+            )
             _accumulate(state, z, y, q, bypass)
         elif config.mode == "shared":
             z = _with_intercept(features.reshape(B * N, -1), config.intercept)
             y = target.reshape(B * N, H)
-            q = np.repeat(weights.reshape(B * N, 1), H, axis=1)
-            bypass = np.repeat(bypass_members.reshape(B * N, 1), H, axis=1)
-            state = statistics.setdefault("shared", _new_statistics(H, z.shape[1]))
+            q = weights.reshape(B * N, 1)
+            bypass = bypass_members.reshape(B * N, 1)
+            state = statistics.setdefault(
+                "shared", _new_statistics(H, z.shape[1], np.zeros(H, dtype=np.int64))
+            )
             _accumulate(state, z, y, q, bypass)
         else:
             for index, member in enumerate(batch.member_ids):
                 z = _with_intercept(features[:, index], config.intercept)
-                q = np.repeat(weights[:, index:index + 1], H, axis=1)
-                bypass = np.repeat(bypass_members[:, index:index + 1], H, axis=1)
-                state = statistics.setdefault(str(member), _new_statistics(H, z.shape[1]))
+                q = weights[:, index:index + 1]
+                bypass = bypass_members[:, index:index + 1]
+                state = statistics.setdefault(
+                    str(member), _new_statistics(H, z.shape[1], np.zeros(H, dtype=np.int64))
+                )
                 _accumulate(state, z, target[:, index], q, bypass)
     if joint_features:
         return RidgeProblem(config, int(L), int(H), fitted_members, {},
@@ -348,17 +371,20 @@ def solve_ridge(problem: RidgeProblem, alpha: float | None = None,
         penalty = np.full(width, config.alpha)
         if config.intercept:
             penalty[-1] = 0
-        for output in range(outputs):
-            system = state.gram[output] / state.windows + np.diag(penalty)
-            rhs = state.rhs[:, output] / state.windows
-            coefficient[:, output] = (np.linalg.lstsq(system, rhs, rcond=config.solver_rcond)[0]
+        for group in range(len(state.gram)):
+            group_outputs = np.flatnonzero(state.output_groups == group)
+            system = state.gram[group] / state.windows + np.diag(penalty)
+            rhs = state.rhs[:, group_outputs] / state.windows
+            solution = (np.linalg.lstsq(system, rhs, rcond=config.solver_rcond)[0]
                 if config.alpha == 0 else np.linalg.solve(system, rhs))
+            coefficient[:, group_outputs] = solution
             if calculate_condition:
                 value = float(np.linalg.cond(system))
-                conditions.append(value if np.isfinite(value) else None)
-            residuals.append(float(np.linalg.norm(system @ coefficient[:, output] - rhs)))
+                conditions.extend([value if np.isfinite(value) else None] * len(group_outputs))
+            residuals.extend(np.linalg.norm(system @ solution - rhs, axis=0).astype(float).tolist())
         coefficients[key] = coefficient
         diagnostics[key] = {"windows": state.windows, "outputs": outputs,
+            "gram_groups": int(len(state.gram)),
             "fitted_cells": state.fitted_cells, "bypassed_cells": state.bypassed_cells,
             "regularized_condition_numbers": conditions,
             "coefficient_norm": float(np.linalg.norm(coefficient[:-1] if config.intercept else coefficient)),
