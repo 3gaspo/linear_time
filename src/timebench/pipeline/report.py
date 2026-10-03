@@ -10,7 +10,8 @@ from timebench.results.performance import write_table
 from timebench.results.reporting import REPORT_METRICS, aggregate_seed_rows, load_performance_rows
 from timebench.paths import logs_root
 from timebench.visualization.linear import plot_lh_heatmap, plot_seed_intervals
-from .runs import load_manifest
+from .report_transaction import ReportTransaction
+from .runs import load_manifest, manifest_reference
 from .tasks import _slug, task_root, write_json
 
 
@@ -50,8 +51,9 @@ def write_study_report(config):
     rows = load_performance_rows([path for path, _ in selected])
     seeds = [int(seed) for seed in config["user_generalization"]["seeds"]]
     reduced = aggregate_seed_rows(rows, seeds) if study == "user_generalization" else rows
-    root = task_root(config).parent / "reports"
-    root.mkdir(parents=True, exist_ok=True)
+    final_root = task_root(config).parent / "reports"
+    transaction = ReportTransaction(final_root)
+    root = transaction.staging
     artifacts = write_table(pd.DataFrame(rows), root / "task_runs")
     if study == "user_generalization":
         artifacts.extend(write_table(pd.DataFrame(reduced), root / "task_seed_summary"))
@@ -75,6 +77,9 @@ def write_study_report(config):
         "launch_log": str(launch_manifest),
         "task_runs": len(selected), "seeds": seeds if study == "user_generalization" else [],
         "seed_std": "sample SD across user-partition seeds only, ddof=1" if study == "user_generalization" else None,
-        "input_manifests": [str(path / "manifest.json") for path, _ in selected],
+        "input_dependencies": [
+            manifest_reference(path / "manifest.json") for path, _ in selected
+        ],
         "artifacts": [str(path.relative_to(root)) for path in artifacts]})
-    return root
+    transaction.commit()
+    return final_root
